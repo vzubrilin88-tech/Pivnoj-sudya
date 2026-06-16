@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Пивной Судья</title>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBz4qtxaFo0uCetf-Y9pBVS7_uOeN7E8BQ",
+  authDomain: "pivnoj-sudya.firebaseapp.com",
+  projectId: "pivnoj-sudya",
+  storageBucket: "pivnoj-sudya.firebasestorage.app",
+  messagingSenderId: "878400500146",
+  appId: "1:878400500146:web:254d835939b5676e04f4ab"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+window._db = db;
+window._fbFns = { doc, setDoc, getDoc, onSnapshot, collection, getDocs };
+window._firebaseReady = true;
+window.dispatchEvent(new Event('firebase-ready'));
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --amber:   #E8821A;
+  --amber-d: #C4660C;
+  --amber-l: #FFF0D6;
+  --foam:    #FFF8EC;
+  --dark:    #1A1208;
+  --mid:     #3D2B0E;
+  --muted:   #8A6A3A;
+  --card:    #FFFDF7;
+  --border:  #EDD9A3;
+  --green:   #2E7D32;
+  --green-l: #E8F5E9;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--foam); color: var(--dark); font-family: 'Inter', sans-serif; min-height: 100vh; }
+
+/* HEADER */
+header {
+  background: var(--dark);
+  padding: 14px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+}
+header h1 {
+  font-family: 'Unbounded', sans-serif;
+  font-size: clamp(14px, 2.5vw, 20px);
+  color: var(--amber); letter-spacing: -.5px; line-height: 1.1;
+}
+header h1 span { color: #fff; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* nickname pill */
+.nick-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 20px; padding: 5px 12px;
+  cursor: pointer; transition: background .2s;
+}
+.nick-pill:hover { background: rgba(255,255,255,.14); }
+.nick-pill .avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--amber); display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: var(--dark); flex-shrink: 0;
+}
+.nick-pill .name { font-size: 12px; color: #ddd; font-weight: 500; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.header-nav { display: flex; gap: 6px; }
+.tab-btn {
+  background: none; border: 1.5px solid var(--muted);
+  color: #aaa; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+  padding: 6px 14px; border-radius: 20px; cursor: pointer; transition: all .2s; white-space: nowrap;
+}
+.tab-btn:hover { border-color: var(--amber); color: var(--amber); }
+.tab-btn.active { background: var(--amber); border-color: var(--amber); color: var(--dark); }
+
+/* VIEWS */
+.view { display: none; padding: 20px 16px; max-width: 700px; margin: 0 auto; }
+.view.active { display: block; }
+
+/* NICKNAME MODAL */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; padding: 20px;
+}
+.modal-overlay.hidden { display: none; }
+.modal {
+  background: var(--card); border-radius: 20px;
+  padding: 32px 28px; max-width: 380px; width: 100%;
+  text-align: center;
+}
+.modal h2 { font-family: 'Unbounded', sans-serif; font-size: 20px; margin-bottom: 8px; }
+.modal p { font-size: 13px; color: var(--muted); line-height: 1.5; margin-bottom: 24px; }
+.modal input {
+  width: 100%; padding: 12px 16px;
+  border: 2px solid var(--border); border-radius: 12px;
+  font-family: 'Inter', sans-serif; font-size: 15px;
+  background: var(--foam); color: var(--dark); outline: none;
+  transition: border-color .2s; text-align: center; margin-bottom: 12px;
+}
+.modal input:focus { border-color: var(--amber); }
+
+/* BATTLE */
+.battle-meta { text-align: center; margin-bottom: 16px; }
+.battle-meta .label { font-family:'Unbounded',sans-serif; font-size:10px; letter-spacing:2px; color:var(--muted); text-transform:uppercase; }
+.battle-meta .count { font-family:'Unbounded',sans-serif; font-size:26px; color:var(--amber); line-height:1; margin-top:3px; }
+.battle-meta .sub { font-size:12px; color:var(--muted); margin-top:2px; }
+
+.vs-grid { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:10px; margin-bottom:20px; }
+.beer-card {
+  background:var(--card); border:2px solid var(--border); border-radius:16px;
+  padding:24px 16px; text-align:center; cursor:pointer;
+  transition:transform .15s, border-color .15s, box-shadow .15s;
+  min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  -webkit-tap-highlight-color:transparent;
+}
+.beer-card:hover { border-color:var(--amber); transform:translateY(-3px); box-shadow:0 8px 24px rgba(232,130,26,.18); }
+.beer-card:active { transform:scale(.97); }
+.beer-card .num { font-family:'Unbounded',sans-serif; font-size:10px; color:var(--amber); opacity:.7; }
+.beer-card .name { font-size:14px; font-weight:600; line-height:1.3; color:var(--dark); }
+.beer-card .elo-badge { font-size:11px; color:var(--muted); margin-top:2px; }
+.vs-sep { font-family:'Unbounded',sans-serif; font-size:16px; color:var(--muted); text-align:center; }
+
+.battle-actions { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; }
+.btn { font-family:'Inter',sans-serif; font-weight:600; font-size:13px; padding:9px 18px; border-radius:10px; border:none; cursor:pointer; transition:all .15s; }
+.btn-ghost { background:none; border:1.5px solid var(--border); color:var(--muted); }
+.btn-ghost:hover { border-color:var(--muted); color:var(--dark); }
+.btn-primary { background:var(--amber); color:var(--dark); }
+.btn-primary:hover { background:var(--amber-d); }
+
+.progress-bar { height:4px; background:var(--border); border-radius:99px; overflow:hidden; margin-bottom:24px; }
+.progress-fill { height:100%; background:var(--amber); border-radius:99px; transition:width .4s ease; }
+
+/* RANKING TABS */
+.rank-toggle {
+  display:flex; gap:0; margin-bottom:20px;
+  border:1.5px solid var(--border); border-radius:12px; overflow:hidden; background:var(--card);
+}
+.rank-toggle button {
+  flex:1; background:none; border:none; padding:10px 8px;
+  font-family:'Inter',sans-serif; font-size:13px; font-weight:600;
+  color:var(--muted); cursor:pointer; transition:all .2s;
+}
+.rank-toggle button.active { background:var(--amber); color:var(--dark); }
+
+.ranking-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; gap:10px; flex-wrap:wrap; }
+.ranking-header h2 { font-family:'Unbounded',sans-serif; font-size:16px; color:var(--dark); }
+.rank-count { font-size:12px; color:var(--muted); }
+
+.rank-list { display:flex; flex-direction:column; gap:7px; }
+.rank-item {
+  background:var(--card); border:1.5px solid var(--border); border-radius:12px;
+  padding:12px 14px; display:flex; align-items:center; gap:12px; transition:border-color .2s;
+}
+.rank-item:hover { border-color:var(--amber); }
+.rank-pos { font-family:'Unbounded',sans-serif; font-size:13px; color:var(--amber); min-width:26px; text-align:right; }
+.rank-pos.gold { color:#D4A017; } .rank-pos.silver { color:#9E9E9E; } .rank-pos.bronze { color:#CD7F32; }
+.rank-name { flex:1; font-size:13px; font-weight:500; line-height:1.3; }
+.rank-stats { text-align:right; font-size:11px; color:var(--muted); line-height:1.6; flex-shrink:0; }
+.rank-elo { font-family:'Unbounded',sans-serif; font-size:13px; font-weight:700; color:var(--dark); }
+.rank-bar-wrap { width:50px; height:3px; background:var(--border); border-radius:99px; overflow:hidden; margin-top:4px; }
+.rank-bar { height:100%; background:var(--amber); border-radius:99px; }
+
+/* voter chips in global ranking */
+.voter-chips { display:flex; flex-wrap:wrap; gap:3px; margin-top:4px; justify-content:flex-end; }
+.voter-chip {
+  font-size:10px; padding:1px 6px; border-radius:99px;
+  background:var(--amber-l); color:var(--mid); font-weight:500;
+}
+
+/* LIST EDITOR */
+.list-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px; }
+.list-header h2 { font-family:'Unbounded',sans-serif; font-size:16px; }
+.add-row { display:flex; gap:8px; margin-bottom:16px; }
+.add-row input {
+  flex:1; padding:10px 14px; border:1.5px solid var(--border); border-radius:10px;
+  font-family:'Inter',sans-serif; font-size:14px; background:var(--card); color:var(--dark);
+  outline:none; transition:border-color .2s;
+}
+.add-row input:focus { border-color:var(--amber); }
+.add-row input::placeholder { color:#bca87a; }
+
+.beer-list { display:flex; flex-direction:column; gap:5px; }
+.beer-list-item {
+  background:var(--card); border:1.5px solid var(--border); border-radius:10px;
+  padding:9px 12px; display:flex; align-items:center; gap:8px; font-size:13px;
+}
+.beer-list-item .idx { font-family:'Unbounded',sans-serif; font-size:10px; color:var(--amber); min-width:20px; }
+.beer-list-item .text { flex:1; }
+.del-btn { background:none; border:none; color:#ccc; cursor:pointer; font-size:15px; padding:2px 5px; border-radius:6px; transition:color .15s, background .15s; line-height:1; }
+.del-btn:hover { color:#e55; background:#fff0f0; }
+
+.warning-box { background:#fff8e6; border:1.5px solid #f0c060; border-radius:10px; padding:11px 14px; font-size:12px; color:#7a5a10; margin-bottom:14px; line-height:1.5; }
+.info-box { background:var(--green-l); border:1.5px solid #a5d6a7; border-radius:10px; padding:11px 14px; font-size:12px; color:var(--green); margin-bottom:14px; line-height:1.5; }
+
+.sync-status { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); margin-bottom:12px; }
+.sync-dot { width:7px; height:7px; border-radius:50%; background:#ccc; flex-shrink:0; }
+.sync-dot.ok { background:#4caf50; } .sync-dot.err { background:#f44336; } .sync-dot.loading { background:var(--amber); animation:pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.danger-zone { margin-top:28px; padding-top:20px; border-top:1.5px dashed var(--border); }
+.danger-zone h3 { font-size:12px; color:var(--muted); margin-bottom:10px; font-weight:600; text-transform:uppercase; letter-spacing:1px; }
+.btn-danger { background:none; border:1.5px solid #e55; color:#e55; font-family:'Inter',sans-serif; font-weight:600; font-size:13px; padding:8px 16px; border-radius:10px; cursor:pointer; transition:all .15s; }
+.btn-danger:hover { background:#fff0f0; }
+
+.empty-state { text-align:center; padding:50px 20px; color:var(--muted); }
+.empty-state .icon { font-size:44px; margin-bottom:10px; }
+.empty-state p { font-size:13px; line-height:1.6; }
+
+#flash { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(60px); background:var(--dark); color:#fff; font-size:13px; font-weight:500; padding:9px 18px; border-radius:10px; opacity:0; transition:all .3s; pointer-events:none; white-space:nowrap; z-index:999; }
+#flash.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+@keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.05)} 100%{transform:scale(1)} }
+.beer-card.winner { animation:pop .25s ease; border-color:var(--amber); }
+
+@media(max-width:480px) {
+  .vs-grid { grid-template-columns:1fr; }
+  .vs-sep { display:none; }
+  .beer-card { min-height:110px; padding:18px 14px; }
+}
+</style>
+</head>
+<body>
+
+<!-- NICKNAME MODAL -->
+<div class="modal-overlay" id="nick-modal">
+  <div class="modal">
+    <div style="font-size:40px;margin-bottom:12px">🍺</div>
+    <h2>Как тебя зовут?</h2>
+    <p>Введи имя или никнейм — оно будет отображаться в общем рейтинге отдела</p>
+    <input id="nick-input" type="text" placeholder="Например: Петя" maxlength="20"
+      onkeydown="if(event.key==='Enter')saveNick()">
+    <button class="btn btn-primary" style="width:100%;padding:12px" onclick="saveNick()">Поехали 🍻</button>
+  </div>
+</div>
+
+<header>
+  <h1>🍺 <span>Пивной</span> Судья</h1>
+  <div class="header-right">
+    <div class="nick-pill" onclick="changeNick()" title="Сменить имя">
+      <div class="avatar" id="header-avatar">?</div>
+      <span class="name" id="header-name">—</span>
+    </div>
+    <nav class="header-nav">
+      <button class="tab-btn active" onclick="showView('battle')">Битва</button>
+      <button class="tab-btn" onclick="showView('ranking')">Топ</button>
+      <button class="tab-btn" onclick="showView('list')">Список</button>
+    </nav>
+  </div>
+</header>
+
+<!-- BATTLE -->
+<div id="view-battle" class="view active">
+  <div class="battle-meta">
+    <div class="label">Твоих сравнений</div>
+    <div class="count" id="battle-count">0</div>
+    <div class="sub">Выбери, что лучше 👇</div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+  <div class="vs-grid">
+    <div class="beer-card" id="card-a" onclick="vote(0)">
+      <div class="num" id="num-a">#1</div>
+      <div class="name" id="name-a">—</div>
+      <div class="elo-badge" id="elo-a"></div>
+    </div>
+    <div class="vs-sep">VS</div>
+    <div class="beer-card" id="card-b" onclick="vote(1)">
+      <div class="num" id="num-b">#2</div>
+      <div class="name" id="name-b">—</div>
+      <div class="elo-badge" id="elo-b"></div>
+    </div>
+  </div>
+  <div class="battle-actions">
+    <button class="btn btn-ghost" onclick="skipPair()">⏭ Пропустить</button>
+    <button class="btn btn-ghost" onclick="undoVote()">↩ Отменить</button>
+  </div>
+</div>
+
+<!-- RANKING -->
+<div id="view-ranking" class="view">
+  <div class="rank-toggle">
+    <button class="active" id="rtab-personal" onclick="switchRankTab('personal')">👤 Мой топ</button>
+    <button id="rtab-global" onclick="switchRankTab('global')">🏆 Топ отдела</button>
+  </div>
+  <div id="rank-personal">
+    <div class="ranking-header">
+      <h2>Мой личный топ</h2>
+      <span class="rank-count" id="rank-count-personal"></span>
+    </div>
+    <div id="rank-list-personal" class="rank-list"></div>
+  </div>
+  <div id="rank-global" style="display:none">
+    <div class="ranking-header">
+      <h2>Топ отдела</h2>
+      <span class="rank-count" id="rank-count-global"></span>
+    </div>
+    <div id="rank-list-global" class="rank-list"></div>
+  </div>
+</div>
+
+<!-- LIST EDITOR -->
+<div id="view-list" class="view">
+  <div class="list-header">
+    <h2>Список пива</h2>
+    <span class="rank-count" id="list-count"></span>
+  </div>
+  <div class="info-box">☁️ Список общий — изменения видят все участники</div>
+  <div class="warning-box">⚠️ Удаление позиции сбрасывает её рейтинг у всех</div>
+  <div class="sync-status"><div class="sync-dot" id="sync-dot"></div><span id="sync-label">Подключение…</span></div>
+  <div class="add-row">
+    <input id="new-beer-input" type="text" placeholder="Добавить новую позицию…" maxlength="120"
+      onkeydown="if(event.key==='Enter')addBeer()">
+    <button class="btn btn-primary" onclick="addBeer()">+ Добавить</button>
+  </div>
+  <div id="beer-list" class="beer-list"></div>
+  <div class="danger-zone">
+    <h3>Опасная зона</h3>
+    <button class="btn-danger" onclick="confirmResetMine()">Сбросить мои рейтинги</button>
+  </div>
+</div>
+
+<div id="flash"></div>
+
+<script type="module">
+// ── wait for firebase ──────────────────────────────────────────
+async function waitFirebase() {
+  if (window._firebaseReady) return;
+  await new Promise(r => window.addEventListener('firebase-ready', r, {once:true}));
+}
+
+// ── DEFAULT LIST ───────────────────────────────────────────────
+const DEFAULT_BEERS = [
+  "Бесплатное Пиво","Пиво на завтрак","Второе Пиво, когда в холодильнике еще больше 1,5л",
+  "Пиво, которое тебе запрещали пить","Спонтанное пиво (неожиданное)","Пиво в литровой кружке",
+  "Пиво на улице","Первое пиво после долгого перерыва","Пиво за обычным ужином","Пиво из башни",
+  "Пиво пока в комп играешь","Пиво, утоляющее жажду за неимением альтернатив",
+  "Последнее пиво перед крепким алкоголем","Пиво «на дорожку»",
+  "Пиво когда очень очень очень устал и надо чтоб мозг отдохнул",
+  "Пиво прям одновременно с сигаретой","Пиво в бане","Пиво в жаркую летнюю погоду на даче",
+  "Пиво после очень острой еды (чтобы охладить рот)","Пиво на спорт мероприятии",
+  "Гипотетическое пиво во время рабочего дня","Пиво с бодуна — думал плохо, а зашло отлично",
+  "Секретное пиво которое ты выпил втайне от жены","Пиво после слов «ну, а давай»",
+  "Пиво с другом с которым миллион лет не пил",
+  "Пиво купленное тебе рандомным панком после победы в бильярд",
+  "Пиво «ну давай по одной» (не по одной)",
+  "Пиво которое ты украл у рандомного туриста на ленинградке",
+  "Спизженное пиво у бати (когда тебе 16)","Чужое пиво","Бесконечное пиво",
+  "Пиво, выигранное в споре","Это невидимое пиво?",
+  "Секретное пиво (в бутылке не из-под пива)","Пиво с водкой","Пиво без водки",
+  "Пиво которое пьёшь на глазах у жены, смотришь ей в душу пока она орёт",
+  "Пиво с рыбкой солёненькой (и хвостик обсосать)","Пиво с сыром (лучше жареным)",
+  "Пиво за день перед отпуском","Пиво на обед?","Полдничное пиво",
+  "Пиво которое тебе налили и принесли",
+  "Пиво, которое купил к чему-то, но главное — это пиво",
+  "Пиво без хуйни — без фруктов и вот этого всего",
+  "Пиво из чужого стакана пока владелец ушёл в туалет",
+  "Пиво в чужой стакан пока владелец ушёл в туалет",
+  "Новое пиво в пакете — никогда не пил, ещё не знаешь какое",
+  "Пиво от которого бздишь как чёрт","Пиво после которого понос жиже самого пива",
+  "Пиво такое лёгкое, что можно было бы и на работе",
+  "Пиво на спор (быстро, из двух стаканов, можно в бассейне)",
+  "Пиво из пивного фонтана","Пиво из пивного водопада епт",
+  "Пиво из мирового океана","Пиво из ледников на Марсе","Пиво из тюбика как у космонавтов"
+];
+
+// ── STATE ──────────────────────────────────────────────────────
+const LOCAL_KEY = 'pivnoj_sudya_v3';
+let myName = '';
+let localState; // личный рейтинг
+let globalBeers = []; // общий список из Firebase
+let globalVotes = {}; // { beerName: { userName: elo } }
+let currentPair = null;
+let unsubscribeGlobal = null;
+
+function loadLocal() {
+  try { const r = localStorage.getItem(LOCAL_KEY); if (r) localState = JSON.parse(r); } catch(e){}
+  if (!localState || !localState.beers) {
+    localState = { beers: [], history: [], totalVotes: 0 };
+  }
+}
+function saveLocal() { localStorage.setItem(LOCAL_KEY, JSON.stringify(localState)); }
+
+// sync local beer list with global
+function syncLocalToGlobal() {
+  if (!globalBeers.length) return;
+  const existing = new Map(localState.beers.map(b => [b.name, b]));
+  const newList = globalBeers.map(name => {
+    if (existing.has(name)) return existing.get(name);
+    return { name, elo: 1500, wins: 0, losses: 0, matches: 0 };
+  });
+  localState.beers = newList;
+  saveLocal();
+}
+
+// ── FIREBASE HELPERS ──────────────────────────────────────────
+async function fbGetBeers() {
+  const { doc, getDoc } = window._fbFns;
+  const db = window._db;
+  const snap = await getDoc(doc(db, 'shared', 'beerList'));
+  if (snap.exists()) return snap.data().beers || DEFAULT_BEERS;
+  // first run — write defaults
+  await fbSetBeers(DEFAULT_BEERS);
+  return DEFAULT_BEERS;
+}
+
+async function fbSetBeers(beers) {
+  const { doc, setDoc } = window._fbFns;
+  await setDoc(doc(window._db, 'shared', 'beerList'), { beers });
+}
+
+async function fbSaveMyVotes() {
+  if (!myName) return;
+  const { doc, setDoc } = window._fbFns;
+  const payload = {};
+  localState.beers.forEach(b => { payload[b.name] = b.elo; });
+  await setDoc(doc(window._db, 'votes', myName), {
+    elo: payload, totalVotes: localState.totalVotes, updatedAt: Date.now()
+  });
+}
+
+function fbListenGlobal() {
+  if (unsubscribeGlobal) unsubscribeGlobal();
+  const { collection, onSnapshot } = window._fbFns;
+  unsubscribeGlobal = onSnapshot(collection(window._db, 'votes'), snap => {
+    globalVotes = {};
+    snap.forEach(d => { globalVotes[d.id] = d.data(); });
+    if (document.getElementById('view-ranking').classList.contains('active')) {
+      renderRankingGlobal();
+    }
+  });
+}
+
+// ── ELO ────────────────────────────────────────────────────────
+const K = 32;
+function expectedScore(ra, rb) { return 1 / (1 + Math.pow(10, (rb - ra) / 400)); }
+function updateElo(winner, loser) {
+  const ea = expectedScore(winner.elo, loser.elo);
+  const eb = 1 - ea;
+  winner.elo = Math.round(winner.elo + K * (1 - ea));
+  loser.elo  = Math.round(loser.elo  + K * (0 - eb));
+  winner.wins++;   winner.matches++;
+  loser.losses++;  loser.matches++;
+}
+
+// ── PAIR PICKING ───────────────────────────────────────────────
+function pickPair(exclude) {
+  const beers = localState.beers;
+  if (beers.length < 2) return null;
+  for (let i = 0; i < 60; i++) {
+    const s = [...beers].sort(() => Math.random() - 0.5);
+    const a = s[0], b = s[1];
+    if (exclude && ((a.name===exclude[0].name&&b.name===exclude[1].name)||(a.name===exclude[1].name&&b.name===exclude[0].name))) continue;
+    return [a, b];
+  }
+  return [beers[0], beers[1]];
+}
+
+function renderBattle() {
+  if (localState.beers.length < 2) {
+    document.getElementById('name-a').textContent = 'Список загружается…';
+    document.getElementById('name-b').textContent = '';
+    return;
+  }
+  currentPair = pickPair(currentPair);
+  const [a, b] = currentPair;
+  document.getElementById('num-a').textContent  = '';
+  document.getElementById('name-a').textContent = a.name;
+  document.getElementById('elo-a').textContent  = a.matches > 0 ? `★ ${a.elo}  (${a.matches} боёв)` : 'новичок';
+  document.getElementById('num-b').textContent  = '';
+  document.getElementById('name-b').textContent = b.name;
+  document.getElementById('elo-b').textContent  = b.matches > 0 ? `★ ${b.elo}  (${b.matches} боёв)` : 'новичок';
+  document.getElementById('battle-count').textContent = localState.totalVotes;
+  const maxPairs = localState.beers.length * (localState.beers.length - 1) / 2;
+  const prog = Math.min(100, Math.round((localState.totalVotes / Math.max(1, maxPairs)) * 100));
+  document.getElementById('progress-fill').style.width = prog + '%';
+}
+
+window.vote = function(winner) {
+  if (!currentPair || !myName) return;
+  const [a, b] = currentPair;
+  const w = winner === 0 ? a : b;
+  const l = winner === 0 ? b : a;
+  const cardEl = document.getElementById(winner === 0 ? 'card-a' : 'card-b');
+  cardEl.classList.add('winner');
+  setTimeout(() => cardEl.classList.remove('winner'), 300);
+
+  localState.history = localState.history || [];
+  localState.history.push({
+    wName: w.name, lName: l.name,
+    wEloBefore: w.elo, lEloBefore: l.elo,
+    wWinsBefore: w.wins, wMatchesBefore: w.matches,
+    lLossesBefore: l.losses, lMatchesBefore: l.matches
+  });
+  if (localState.history.length > 30) localState.history.shift();
+
+  updateElo(w, l);
+  localState.totalVotes++;
+  saveLocal();
+  fbSaveMyVotes();
+  renderBattle();
+};
+
+window.skipPair = function() { renderBattle(); flash('Пара пропущена'); };
+
+window.undoVote = function() {
+  if (!localState.history?.length) { flash('Нечего отменять'); return; }
+  const h = localState.history.pop();
+  const w = localState.beers.find(b => b.name === h.wName);
+  const l = localState.beers.find(b => b.name === h.lName);
+  if (w && l) {
+    w.elo = h.wEloBefore; w.wins = h.wWinsBefore; w.matches = h.wMatchesBefore;
+    l.elo = h.lEloBefore; l.losses = h.lLossesBefore; l.matches = h.lMatchesBefore;
+    localState.totalVotes = Math.max(0, localState.totalVotes - 1);
+  }
+  saveLocal(); fbSaveMyVotes(); renderBattle(); flash('Оценка отменена');
+};
+
+// ── RANKING PERSONAL ───────────────────────────────────────────
+function renderRankingPersonal() {
+  const sorted = [...localState.beers].sort((a, b) => b.elo - a.elo);
+  const active = sorted.filter(b => b.matches > 0);
+  const inactive = sorted.filter(b => b.matches === 0);
+  const maxElo = active[0]?.elo || 1500;
+  const minElo = active[active.length-1]?.elo || 1500;
+  const range = maxElo - minElo || 1;
+
+  document.getElementById('rank-count-personal').textContent =
+    localState.totalVotes + ' сравнений';
+
+  const el = document.getElementById('rank-list-personal');
+  if (!localState.totalVotes) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">🍺</div><p>Пока пусто.<br>Перейди во вкладку <b>Битва</b> и начни сравнивать!</p></div>`;
+    return;
+  }
+  const medals = ['gold','silver','bronze'];
+  let html = active.map((b, i) => {
+    const pct = Math.round(((b.elo - minElo) / range) * 100);
+    const wr = b.matches > 0 ? Math.round((b.wins/b.matches)*100) : 0;
+    return `<div class="rank-item">
+      <div class="rank-pos ${medals[i]||''}">${i+1}</div>
+      <div class="rank-name">${esc(b.name)}</div>
+      <div class="rank-stats">
+        <div class="rank-elo">${b.elo}</div>
+        <div>${wr}% побед · ${b.matches} боёв</div>
+        <div class="rank-bar-wrap"><div class="rank-bar" style="width:${pct}%"></div></div>
+      </div>
+    </div>`;
+  }).join('');
+  if (inactive.length) {
+    html += `<div style="text-align:center;padding:14px 0 4px;font-size:11px;color:var(--muted);">Ещё не участвовали (${inactive.length})</div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ── RANKING GLOBAL ─────────────────────────────────────────────
+function renderRankingGlobal() {
+  const voters = Object.keys(globalVotes);
+  document.getElementById('rank-count-global').textContent =
+    voters.length + ' участник' + (voters.length===1?'':voters.length<5?'а':'ов');
+
+  const el = document.getElementById('rank-list-global');
+  if (!voters.length) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">👥</div><p>Никто ещё не проголосовал.<br>Начни первым!</p></div>`;
+    return;
+  }
+
+  // aggregate: for each beer, average ELO across all voters who rated it
+  const beerMap = {}; // name -> { totalElo, voters: [name] }
+  voters.forEach(voter => {
+    const data = globalVotes[voter];
+    if (!data.elo) return;
+    Object.entries(data.elo).forEach(([beerName, elo]) => {
+      if (!beerMap[beerName]) beerMap[beerName] = { totalElo: 0, voters: [], count: 0 };
+      beerMap[beerName].totalElo += elo;
+      beerMap[beerName].voters.push(voter);
+      beerMap[beerName].count++;
+    });
+  });
+
+  // only show beers that at least one person rated (elo != 1500 or has matches)
+  // actually show all — sort by avg elo
+  const sorted = Object.entries(beerMap)
+    .map(([name, d]) => ({ name, avgElo: Math.round(d.totalElo / d.count), voters: d.voters, count: d.count }))
+    .filter(b => b.avgElo !== 1500 || b.count > 1)
+    .sort((a, b) => b.avgElo - a.avgElo);
+
+  if (!sorted.length) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">🍺</div><p>Данных пока нет.<br>Сделай несколько сравнений в Битве!</p></div>`;
+    return;
+  }
+
+  const maxElo = sorted[0].avgElo;
+  const minElo = sorted[sorted.length-1].avgElo;
+  const range = maxElo - minElo || 1;
+  const medals = ['gold','silver','bronze'];
+
+  el.innerHTML = sorted.map((b, i) => {
+    const pct = Math.round(((b.avgElo - minElo) / range) * 100);
+    const chips = b.voters.map(v =>
+      `<span class="voter-chip">${esc(v)}</span>`
+    ).join('');
+    return `<div class="rank-item">
+      <div class="rank-pos ${medals[i]||''}">${i+1}</div>
+      <div class="rank-name">${esc(b.name)}</div>
+      <div class="rank-stats">
+        <div class="rank-elo">${b.avgElo}</div>
+        <div>среднее · ${b.count} чел.</div>
+        <div class="rank-bar-wrap"><div class="rank-bar" style="width:${pct}%"></div></div>
+        <div class="voter-chips">${chips}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── RANK TAB SWITCH ────────────────────────────────────────────
+window.switchRankTab = function(tab) {
+  document.getElementById('rank-personal').style.display = tab==='personal' ? '' : 'none';
+  document.getElementById('rank-global').style.display   = tab==='global'   ? '' : 'none';
+  document.getElementById('rtab-personal').classList.toggle('active', tab==='personal');
+  document.getElementById('rtab-global').classList.toggle('active', tab==='global');
+  if (tab==='personal') renderRankingPersonal();
+  else renderRankingGlobal();
+};
+
+// ── LIST ───────────────────────────────────────────────────────
+function renderList() {
+  const el = document.getElementById('beer-list');
+  document.getElementById('list-count').textContent = globalBeers.length + ' позиций';
+  el.innerHTML = globalBeers.map((name, i) =>
+    `<div class="beer-list-item">
+      <span class="idx">${i+1}</span>
+      <span class="text">${esc(name)}</span>
+      <button class="del-btn" onclick="deleteBeer(${i})" title="Удалить">✕</button>
+    </div>`
+  ).join('');
+}
+
+window.addBeer = async function() {
+  const inp = document.getElementById('new-beer-input');
+  const name = inp.value.trim();
+  if (!name) { inp.focus(); return; }
+  if (globalBeers.find(b => b.toLowerCase() === name.toLowerCase())) { flash('Такое уже есть!'); return; }
+  setSyncStatus('loading', 'Сохраняем…');
+  globalBeers = [...globalBeers, name];
+  await fbSetBeers(globalBeers);
+  syncLocalToGlobal();
+  inp.value = '';
+  renderList();
+  setSyncStatus('ok', 'Сохранено');
+  flash('Добавлено: ' + name);
+};
+
+window.deleteBeer = async function(idx) {
+  const name = globalBeers[idx];
+  if (!confirm(`Удалить «${name}»?\nЭто сбросит её рейтинг у всех участников.`)) return;
+  globalBeers = globalBeers.filter((_, i) => i !== idx);
+  await fbSetBeers(globalBeers);
+  syncLocalToGlobal();
+  await fbSaveMyVotes();
+  renderList();
+  renderBattle();
+  flash('Удалено');
+};
+
+window.confirmResetMine = async function() {
+  if (!confirm('Сбросить только ТВОИ рейтинги? Список пива и оценки других сохранятся.')) return;
+  localState.beers.forEach(b => { b.elo=1500; b.wins=0; b.losses=0; b.matches=0; });
+  localState.history = []; localState.totalVotes = 0;
+  saveLocal(); await fbSaveMyVotes();
+  renderAll(); flash('Твои рейтинги сброшены');
+};
+
+// ── NICKNAME ───────────────────────────────────────────────────
+function loadNick() {
+  myName = localStorage.getItem('pivnoj_nick') || '';
+}
+window.saveNick = function() {
+  const v = document.getElementById('nick-input').value.trim();
+  if (!v) return;
+  myName = v;
+  localStorage.setItem('pivnoj_nick', v);
+  document.getElementById('nick-modal').classList.add('hidden');
+  updateHeaderNick();
+  fbSaveMyVotes();
+};
+window.changeNick = function() {
+  document.getElementById('nick-input').value = myName;
+  document.getElementById('nick-modal').classList.remove('hidden');
+  setTimeout(() => document.getElementById('nick-input').focus(), 100);
+};
+function updateHeaderNick() {
+  document.getElementById('header-name').textContent = myName || '—';
+  document.getElementById('header-avatar').textContent = myName ? myName[0].toUpperCase() : '?';
+}
+
+// ── ROUTING ────────────────────────────────────────────────────
+window.showView = function(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    if (b.textContent.includes(name==='battle'?'Бит':name==='ranking'?'Топ':'Спис'))
+      b.classList.add('active');
+  });
+  if (name==='ranking') { renderRankingPersonal(); renderRankingGlobal(); }
+  if (name==='list') renderList();
+};
+
+function renderAll() { renderBattle(); renderRankingPersonal(); renderRankingGlobal(); renderList(); }
+
+// ── SYNC STATUS ────────────────────────────────────────────────
+function setSyncStatus(state, label) {
+  const dot = document.getElementById('sync-dot');
+  const lbl = document.getElementById('sync-label');
+  if (dot) { dot.className = 'sync-dot ' + state; }
+  if (lbl) lbl.textContent = label;
+}
+
+// ── UTILS ──────────────────────────────────────────────────────
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let flashTimer;
+window.flash = function(msg) {
+  const el = document.getElementById('flash');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove('show'), 2200);
+};
+
+// ── INIT ───────────────────────────────────────────────────────
+async function init() {
+  loadNick();
+  loadLocal();
+  updateHeaderNick();
+
+  if (!myName) {
+    document.getElementById('nick-modal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('nick-input').focus(), 200);
+  } else {
+    document.getElementById('nick-modal').classList.add('hidden');
+  }
+
+  setSyncStatus('loading', 'Подключение к Firebase…');
+  await waitFirebase();
+
+  try {
+    globalBeers = await fbGetBeers();
+    syncLocalToGlobal();
+    setSyncStatus('ok', 'Подключено ✓');
+    fbListenGlobal();
+  } catch(e) {
+    console.error(e);
+    setSyncStatus('err', 'Ошибка подключения');
+    flash('Не удалось подключиться к Firebase');
+    // fallback to defaults
+    globalBeers = DEFAULT_BEERS;
+    syncLocalToGlobal();
+  }
+
+  renderAll();
+}
+
+init();
+</script>
+</body>
+</html>
