@@ -690,13 +690,36 @@ window.confirmResetMine = async function() {
 function loadNick() {
   myName = localStorage.getItem('pivnoj_nick') || '';
 }
-window.saveNick = function() {
+window.saveNick = async function() {
   const v = document.getElementById('nick-input').value.trim();
   if (!v) return;
+  const oldName = myName;
   myName = v;
   localStorage.setItem('pivnoj_nick', v);
   document.getElementById('nick-modal').classList.add('hidden');
   updateHeaderNick();
+
+  // если имя изменилось или localStorage пустой — пробуем восстановить из Firebase
+  if (v !== oldName || !localState.totalVotes) {
+    try {
+      const { doc, getDoc } = window._fbFns;
+      const snap = await getDoc(doc(window._db, 'votes', v));
+      if (snap.exists()) {
+        const data = snap.data();
+        // восстанавливаем ELO из Firebase в локальный стейт
+        if (data.elo) {
+          localState.beers.forEach(b => {
+            if (data.elo[b.name] !== undefined) b.elo = data.elo[b.name];
+          });
+        }
+        if (data.totalVotes) localState.totalVotes = data.totalVotes;
+        saveLocal();
+        renderAll();
+        flash('Твой топ восстановлен из Firebase 🍺');
+        return;
+      }
+    } catch(e) { console.error('restore error', e); }
+  }
   fbSaveMyVotes();
 };
 window.changeNick = function() {
@@ -762,6 +785,23 @@ async function init() {
   try {
     globalBeers = await fbGetBeers();
     syncLocalToGlobal();
+
+    // если имя уже есть — пробуем восстановить личный топ из Firebase
+    if (myName && !localState.totalVotes) {
+      const { doc, getDoc } = window._fbFns;
+      const snap = await getDoc(doc(window._db, 'votes', myName));
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.elo) {
+          localState.beers.forEach(b => {
+            if (data.elo[b.name] !== undefined) b.elo = data.elo[b.name];
+          });
+        }
+        if (data.totalVotes) localState.totalVotes = data.totalVotes;
+        saveLocal();
+      }
+    }
+
     setSyncStatus('ok', 'Подключено ✓');
     fbListenGlobal();
   } catch(e) {
