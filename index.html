@@ -568,7 +568,7 @@ function renderRankingPersonal() {
   el.innerHTML = html;
 }
 
-// ── RANKING GLOBAL ─────────────────────────────────────────────
+// ── RANKING GLOBAL (нормализация по рангу) ────────────────────
 function renderRankingGlobal() {
   const voters = Object.keys(globalVotes);
   document.getElementById('rank-count-global').textContent =
@@ -580,47 +580,52 @@ function renderRankingGlobal() {
     return;
   }
 
-  // aggregate: for each beer, average ELO across all voters who rated it
-  const beerMap = {}; // name -> { totalElo, voters: [name] }
+  // Нормализация по рангу: каждому участнику присваиваем его пиву
+  // нормализованный ранг 0..1 (1 = лучшее место, 0 = худшее).
+  // Итоговый скор = среднее нормализованных рангов по всем участникам.
+  // Пиво с ELO=1500 и 0 боёв = не голосовали — пропускаем.
+
+  const beerScores = {}; // name -> { totalScore, voters, count }
+
   voters.forEach(voter => {
     const data = globalVotes[voter];
     if (!data.elo) return;
-    Object.entries(data.elo).forEach(([beerName, elo]) => {
-      if (!beerMap[beerName]) beerMap[beerName] = { totalElo: 0, voters: [], count: 0 };
-      beerMap[beerName].totalElo += elo;
-      beerMap[beerName].voters.push(voter);
-      beerMap[beerName].count++;
+
+    const rated = Object.entries(data.elo)
+      .filter(([, elo]) => elo !== 1500)
+      .sort((a, b) => b[1] - a[1]);
+
+    if (rated.length < 2) return;
+
+    const n = rated.length;
+    rated.forEach(([beerName], idx) => {
+      const normRank = 1 - (idx / (n - 1));
+      if (!beerScores[beerName]) beerScores[beerName] = { totalScore: 0, voters: [], count: 0 };
+      beerScores[beerName].totalScore += normRank;
+      beerScores[beerName].voters.push(voter);
+      beerScores[beerName].count++;
     });
   });
 
-  // only show beers that at least one person rated (elo != 1500 or has matches)
-  // actually show all — sort by avg elo
-  const sorted = Object.entries(beerMap)
-    .map(([name, d]) => ({ name, avgElo: Math.round(d.totalElo / d.count), voters: d.voters, count: d.count }))
-    .filter(b => b.avgElo !== 1500 || b.count > 1)
-    .sort((a, b) => b.avgElo - a.avgElo);
+  const sorted = Object.entries(beerScores)
+    .map(([name, d]) => ({ name, avgScore: d.totalScore / d.count, voters: d.voters, count: d.count }))
+    .sort((a, b) => b.avgScore - a.avgScore);
 
   if (!sorted.length) {
     el.innerHTML = `<div class="empty-state"><div class="icon">🍺</div><p>Данных пока нет.<br>Сделай несколько сравнений в Битве!</p></div>`;
     return;
   }
 
-  const maxElo = sorted[0].avgElo;
-  const minElo = sorted[sorted.length-1].avgElo;
-  const range = maxElo - minElo || 1;
   const medals = ['gold','silver','bronze'];
-
   el.innerHTML = sorted.map((b, i) => {
-    const pct = Math.round(((b.avgElo - minElo) / range) * 100);
-    const chips = b.voters.map(v =>
-      `<span class="voter-chip">${esc(v)}</span>`
-    ).join('');
+    const pct = Math.round(b.avgScore * 100);
+    const chips = b.voters.map(v => `<span class="voter-chip">${esc(v)}</span>`).join('');
     return `<div class="rank-item">
       <div class="rank-pos ${medals[i]||''}">${i+1}</div>
       <div class="rank-name">${esc(b.name)}</div>
       <div class="rank-stats">
-        <div class="rank-elo">${b.avgElo}</div>
-        <div>среднее · ${b.count} чел.</div>
+        <div class="rank-elo">${pct}%</div>
+        <div>${b.count} чел.</div>
         <div class="rank-bar-wrap"><div class="rank-bar" style="width:${pct}%"></div></div>
         <div class="voter-chips">${chips}</div>
       </div>
