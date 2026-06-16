@@ -568,7 +568,7 @@ function renderRankingPersonal() {
   el.innerHTML = html;
 }
 
-// ── RANKING GLOBAL (нормализация по рангу) ────────────────────
+// ── RANKING GLOBAL (порог 2 чел. + байесовское сглаживание) ───
 function renderRankingGlobal() {
   const voters = Object.keys(globalVotes);
   document.getElementById('rank-count-global').textContent =
@@ -580,11 +580,7 @@ function renderRankingGlobal() {
     return;
   }
 
-  // Нормализация по рангу: каждому участнику присваиваем его пиву
-  // нормализованный ранг 0..1 (1 = лучшее место, 0 = худшее).
-  // Итоговый скор = среднее нормализованных рангов по всем участникам.
-  // Пиво с ELO=1500 и 0 боёв = не голосовали — пропускаем.
-
+  // Шаг 1: нормализованные ранги от каждого участника
   const beerScores = {}; // name -> { totalScore, voters, count }
 
   voters.forEach(voter => {
@@ -607,30 +603,74 @@ function renderRankingGlobal() {
     });
   });
 
-  const sorted = Object.entries(beerScores)
-    .map(([name, d]) => ({ name, avgScore: d.totalScore / d.count, voters: d.voters, count: d.count }))
-    .sort((a, b) => b.avgScore - a.avgScore);
+  // Шаг 2: байесовское сглаживание
+  // взвешенный скор = (C * m + n * avgRaw) / (C + n)
+  // где m = глобальное среднее, C = сила сглаживания (= минимальный порог = 2)
+  const MIN_VOTERS = 2;   // порог: меньше — не показываем
+  const C = 2;            // байесовский коэффициент сглаживания
 
-  if (!sorted.length) {
+  const allEntries = Object.entries(beerScores)
+    .map(([name, d]) => ({ name, avgRaw: d.totalScore / d.count, voters: d.voters, count: d.count }));
+
+  // глобальное среднее по всем позициям (для байеса)
+  const globalMean = allEntries.length
+    ? allEntries.reduce((s, b) => s + b.avgRaw, 0) / allEntries.length
+    : 0.5;
+
+  // фильтруем порогом и считаем байесовский скор
+  const sorted = allEntries
+    .filter(b => b.count >= MIN_VOTERS)
+    .map(b => ({
+      ...b,
+      score: (C * globalMean + b.count * b.avgRaw) / (C + b.count)
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  // позиции, которые ещё не набрали порог
+  const pending = allEntries.filter(b => b.count < MIN_VOTERS);
+
+  if (!sorted.length && !pending.length) {
     el.innerHTML = `<div class="empty-state"><div class="icon">🍺</div><p>Данных пока нет.<br>Сделай несколько сравнений в Битве!</p></div>`;
     return;
   }
 
   const medals = ['gold','silver','bronze'];
-  el.innerHTML = sorted.map((b, i) => {
-    const pct = Math.round(b.avgScore * 100);
-    const chips = b.voters.map(v => `<span class="voter-chip">${esc(v)}</span>`).join('');
-    return `<div class="rank-item">
-      <div class="rank-pos ${medals[i]||''}">${i+1}</div>
-      <div class="rank-name">${esc(b.name)}</div>
-      <div class="rank-stats">
-        <div class="rank-elo">${pct}%</div>
-        <div>${b.count} чел.</div>
-        <div class="rank-bar-wrap"><div class="rank-bar" style="width:${pct}%"></div></div>
-        <div class="voter-chips">${chips}</div>
-      </div>
-    </div>`;
-  }).join('');
+  let html = '';
+
+  if (sorted.length) {
+    html += sorted.map((b, i) => {
+      const pct = Math.round(b.score * 100);
+      const chips = b.voters.map(v => `<span class="voter-chip">${esc(v)}</span>`).join('');
+      return `<div class="rank-item">
+        <div class="rank-pos ${medals[i]||''}">${i+1}</div>
+        <div class="rank-name">${esc(b.name)}</div>
+        <div class="rank-stats">
+          <div class="rank-elo">${pct}%</div>
+          <div>${b.count} чел.</div>
+          <div class="rank-bar-wrap"><div class="rank-bar" style="width:${pct}%"></div></div>
+          <div class="voter-chips">${chips}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  if (pending.length) {
+    html += `<div style="text-align:center;padding:16px 0 6px;font-size:12px;color:var(--muted);">
+      ⏳ Ждут ещё голосов (нужно минимум ${MIN_VOTERS})</div>`;
+    html += pending.map(b => {
+      const chips = b.voters.map(v => `<span class="voter-chip">${esc(v)}</span>`).join('');
+      return `<div class="rank-item" style="opacity:.5">
+        <div class="rank-pos">—</div>
+        <div class="rank-name">${esc(b.name)}</div>
+        <div class="rank-stats">
+          <div style="font-size:11px">${b.count}/${MIN_VOTERS} чел.</div>
+          <div class="voter-chips">${chips}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  el.innerHTML = html || `<div class="empty-state"><div class="icon">🍺</div><p>Данных пока нет.</p></div>`;
 }
 
 // ── RANK TAB SWITCH ────────────────────────────────────────────
