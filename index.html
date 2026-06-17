@@ -427,10 +427,15 @@ async function fbSetBeers(beers) {
 async function fbSaveMyVotes() {
   if (!myName) return;
   const { doc, setDoc } = window._fbFns;
-  const payload = {};
-  localState.beers.forEach(b => { payload[b.name] = b.elo; });
+  const eloPayload = {};
+  const wlPayload = {};
+  localState.beers.forEach(b => {
+    eloPayload[b.name] = b.elo;
+    wlPayload[b.name] = { wins: b.wins, losses: b.losses };
+  });
   await setDoc(doc(window._db, 'votes', myName), {
-    elo: payload, totalVotes: localState.totalVotes, updatedAt: Date.now()
+    elo: eloPayload, winsLosses: wlPayload,
+    totalVotes: localState.totalVotes, updatedAt: Date.now()
   });
 }
 
@@ -481,14 +486,25 @@ function renderBattle() {
   const [a, b] = currentPair;
   document.getElementById('num-a').textContent  = '';
   document.getElementById('name-a').textContent = a.name;
-  document.getElementById('elo-a').textContent  = a.matches > 0 ? `★ ${a.elo}  (${a.matches} боёв)` : 'новичок';
+  document.getElementById('elo-a').textContent  = ''; // скрыто до голоса
   document.getElementById('num-b').textContent  = '';
   document.getElementById('name-b').textContent = b.name;
-  document.getElementById('elo-b').textContent  = b.matches > 0 ? `★ ${b.elo}  (${b.matches} боёв)` : 'новичок';
+  document.getElementById('elo-b').textContent  = ''; // скрыто до голоса
   document.getElementById('battle-count').textContent = localState.totalVotes;
   const maxPairs = localState.beers.length * (localState.beers.length - 1) / 2;
   const prog = Math.min(100, Math.round((localState.totalVotes / Math.max(1, maxPairs)) * 100));
   document.getElementById('progress-fill').style.width = prog + '%';
+}
+
+function showBattleStats(a, b) {
+  const statA = a.matches > 0
+    ? `★ ${a.elo} · ${a.wins}W / ${a.losses}L · ${Math.round(a.wins/a.matches*100)}%`
+    : 'новичок';
+  const statB = b.matches > 0
+    ? `★ ${b.elo} · ${b.wins}W / ${b.losses}L · ${Math.round(b.wins/b.matches*100)}%`
+    : 'новичок';
+  document.getElementById('elo-a').textContent = statA;
+  document.getElementById('elo-b').textContent = statB;
 }
 
 window.vote = function(winner) {
@@ -513,7 +529,10 @@ window.vote = function(winner) {
   localState.totalVotes++;
   saveLocal();
   fbSaveMyVotes();
-  renderBattle();
+
+  // показываем статистику после голоса, потом переходим к следующей паре
+  showBattleStats(a, b);
+  setTimeout(() => renderBattle(), 1400);
 };
 
 window.skipPair = function() { renderBattle(); flash('Пара пропущена'); };
@@ -596,10 +615,15 @@ function renderRankingGlobal() {
     const n = rated.length;
     rated.forEach(([beerName], idx) => {
       const normRank = 1 - (idx / (n - 1));
-      if (!beerScores[beerName]) beerScores[beerName] = { totalScore: 0, voters: [], count: 0 };
+      if (!beerScores[beerName]) beerScores[beerName] = { totalScore: 0, voters: [], count: 0, totalWins: 0, totalLosses: 0 };
       beerScores[beerName].totalScore += normRank;
       beerScores[beerName].voters.push(voter);
       beerScores[beerName].count++;
+      // wins/losses из Firebase если есть
+      if (data.winsLosses && data.winsLosses[beerName]) {
+        beerScores[beerName].totalWins   += data.winsLosses[beerName].wins   || 0;
+        beerScores[beerName].totalLosses += data.winsLosses[beerName].losses || 0;
+      }
     });
   });
 
@@ -610,7 +634,18 @@ function renderRankingGlobal() {
   const C = 2;            // байесовский коэффициент сглаживания
 
   const allEntries = Object.entries(beerScores)
-    .map(([name, d]) => ({ name, avgRaw: d.totalScore / d.count, voters: d.voters, count: d.count }));
+    .map(([name, d]) => {
+      const totalMatches = d.totalWins + d.totalLosses;
+      return {
+        name,
+        avgRaw: d.totalScore / d.count,
+        voters: d.voters,
+        count: d.count,
+        totalWins: d.totalWins,
+        totalLosses: d.totalLosses,
+        winRate: totalMatches > 0 ? Math.round(d.totalWins / totalMatches * 100) : 0
+      };
+    });
 
   // глобальное среднее по всем позициям (для байеса)
   const globalMean = allEntries.length
@@ -646,7 +681,7 @@ function renderRankingGlobal() {
         <div class="rank-name">${esc(b.name)}</div>
         <div class="rank-stats">
           <div class="rank-elo">${pct}%</div>
-          <div>${b.count} чел.</div>
+          <div>${b.count} чел. · ${b.totalWins}W / ${b.totalLosses}L · ${b.winRate}% побед</div>
           <div class="rank-bar-wrap"><div class="rank-bar" style="width:${pct}%"></div></div>
           <div class="voter-chips">${chips}</div>
         </div>
